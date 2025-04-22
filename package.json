@@ -1,0 +1,29 @@
+{
+  "name": "gpx-split-by-interest-points",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@eslint/js": "^9.25.1",
+    "@eslint/json": "^0.12.0",
+    "@types/node": "^22.14.1",
+    "eslint": "^9.25.1",
+    "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-prettier": "^5.2.6",
+    "globals": "^16.0.0",
+    "prettier": "3.5.3",
+    "tsx": "^4.19.3",
+    "typescript-eslint": "^8.31.0"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.2.1",
+    "typescript": "^5.8.3",
+    "zod": "^3.24.3"
+  }
+}
