@@ -9,7 +9,8 @@ import { routeSchema, RouteSchemaType } from "./schemas/route.schema";
 import { haversineDistance } from "./utils/math/geography";
 import { deepPassthrough } from "./utils/zod";
 
-const FILTER_REGEX = /Jour \d+/;
+const FILTER_PREFIX = "Jour";
+const FILTER_REGEX = /Jour (\d+)/;
 
 async function main() {
   const logger = new Logger();
@@ -27,6 +28,19 @@ async function main() {
   logger.debug("filtering points of interest");
   const pointsOfInterest = route.gpx.wpt.filter(({ name }) => name.match(FILTER_REGEX));
 
+  const lastDayNumber =
+    pointsOfInterest.reduce((acc, { name }) => {
+      const res = FILTER_REGEX.exec(name) ?? [];
+      const [, strNbr] = res;
+      if (strNbr === undefined) {
+        return acc;
+      }
+
+      const nbr = parseInt(strNbr);
+
+      return nbr > acc ? nbr : acc;
+    }, -Infinity) + 1;
+  logger.debug("lastDayNumber=%d", lastDayNumber);
   logger.debug("computing segments");
   const { segments } = pointsOfInterest.reduce<{
     segments: Array<{ name: string; trkpt: RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"] }>;
@@ -74,7 +88,7 @@ async function main() {
       };
     },
     {
-      segments: [{ name: route.gpx.metadata.name, trkpt: route.gpx.trk.trkseg.trkpt }],
+      segments: [{ name: `${FILTER_PREFIX} ${lastDayNumber}`, trkpt: route.gpx.trk.trkseg.trkpt }],
     },
   );
 
