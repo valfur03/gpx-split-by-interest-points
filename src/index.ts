@@ -10,6 +10,7 @@ import { haversineDistance } from "./utils/math/geography";
 import { deepPassthrough } from "./utils/zod";
 
 const OUTPUT_FILE_PATH = "output.gpx";
+const FILTER_REGEX = /Jour \d+/;
 
 async function main() {
   const logger = new Logger();
@@ -24,50 +25,50 @@ async function main() {
   logger.debug("validating schema");
   const route = deepPassthrough(routeSchema).parse(xml);
 
+  logger.debug("filtering points of interest");
+  const pointsOfInterest = route.gpx.wpt.filter(({ name }) => name.match(FILTER_REGEX));
+
   logger.debug("computing segments");
-  const { segments } = route.gpx.trk.trkseg.trkpt.reduce<{
+  const { segments } = pointsOfInterest.reduce<{
     segments: Array<RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"]>;
-    nearestPoint: {
-      distance: number;
-      name: string;
-    } | null;
-    wpt: RouteSchemaType["gpx"]["wpt"];
   }>(
-    ({ segments, nearestPoint, wpt }, trkpt) => {
-      const nearestPointDistance = nearestPoint?.distance ?? Infinity;
-      const newNearestPoint = wpt.reduce<{
-        distance: number;
-        name: string;
-      } | null>((nearestPoint, { name, "@_lat": pointLat, "@_lon": pointLon }) => {
-        const pointDistance = nearestPoint?.distance ?? Infinity;
+    ({ segments }, { "@_lat": pointLat, "@_lon": pointLon }) => {
+      const { closestRoutePoint } = route.gpx.trk.trkseg.trkpt.reduce<{
+        closestRoutePoint: { "@_lat": number; "@_lon": number; distance: number } | null;
+      }>(
+        ({ closestRoutePoint }, trkpt) => {
+          const closestRoutePointDistance = closestRoutePoint?.distance ?? Infinity;
+          const distance = haversineDistance(pointLat, pointLon, trkpt["@_lat"], trkpt["@_lon"]);
 
-        const distance = haversineDistance(trkpt["@_lat"], trkpt["@_lon"], pointLat, pointLon);
+          if (distance < closestRoutePointDistance) {
+            return { closestRoutePoint: { ...trkpt, distance } };
+          }
 
-        if (distance < pointDistance) {
-          return { distance, name };
-        }
-        return nearestPoint;
-      }, null);
+          return { closestRoutePoint };
+        },
+        { closestRoutePoint: null },
+      );
 
-      if (newNearestPoint !== null && nearestPoint !== null && newNearestPoint.distance > nearestPointDistance) {
-        return {
-          segments: [...segments, [trkpt]],
-          nearestPoint: null,
-          wpt: wpt.filter(({ name }) => name !== nearestPoint.name),
-        };
+      if (closestRoutePoint === null) {
+        return { segments };
       }
 
-      const lastSegment = segments.at(-1) ?? [];
       return {
-        segments: [...segments.slice(0, -1), [...lastSegment, trkpt]],
-        nearestPoint: newNearestPoint,
-        wpt,
+        segments: segments.reduce<Array<RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"]>>((acc, segment) => {
+          const index = segment.findIndex(({ "@_lat": lat, "@_lon": lon }) => {
+            return closestRoutePoint["@_lat"] === lat && closestRoutePoint["@_lon"] === lon;
+          });
+
+          if (index < 0) {
+            return [...acc, segment];
+          }
+
+          return [...acc, segment.slice(0, index + 1), segment.slice(index + 1)];
+        }, []),
       };
     },
     {
-      segments: [],
-      nearestPoint: null,
-      wpt: route.gpx.wpt,
+      segments: [route.gpx.trk.trkseg.trkpt],
     },
   );
 
