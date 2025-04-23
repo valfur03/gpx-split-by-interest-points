@@ -80,7 +80,7 @@ async function main() {
             return [
               ...acc,
               { name: name, trkpt: segment.trkpt.slice(0, index + 1) },
-              { name: segment.name, trkpt: segment.trkpt.slice(index + 1) },
+              { name: segment.name, trkpt: segment.trkpt.slice(index) },
             ];
           },
           [],
