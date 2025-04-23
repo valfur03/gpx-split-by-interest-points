@@ -9,7 +9,6 @@ import { routeSchema, RouteSchemaType } from "./schemas/route.schema";
 import { haversineDistance } from "./utils/math/geography";
 import { deepPassthrough } from "./utils/zod";
 
-const OUTPUT_FILE_PATH = "output.gpx";
 const FILTER_REGEX = /Jour \d+/;
 
 async function main() {
@@ -30,9 +29,9 @@ async function main() {
 
   logger.debug("computing segments");
   const { segments } = pointsOfInterest.reduce<{
-    segments: Array<RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"]>;
+    segments: Array<{ name: string; trkpt: RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"] }>;
   }>(
-    ({ segments }, { "@_lat": pointLat, "@_lon": pointLon }) => {
+    ({ segments }, { name, "@_lat": pointLat, "@_lon": pointLon }) => {
       const { closestRoutePoint } = route.gpx.trk.trkseg.trkpt.reduce<{
         closestRoutePoint: { "@_lat": number; "@_lon": number; distance: number } | null;
       }>(
@@ -54,38 +53,58 @@ async function main() {
       }
 
       return {
-        segments: segments.reduce<Array<RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"]>>((acc, segment) => {
-          const index = segment.findIndex(({ "@_lat": lat, "@_lon": lon }) => {
-            return closestRoutePoint["@_lat"] === lat && closestRoutePoint["@_lon"] === lon;
-          });
+        segments: segments.reduce<Array<{ name: string; trkpt: RouteSchemaType["gpx"]["trk"]["trkseg"]["trkpt"] }>>(
+          (acc, segment) => {
+            const index = segment.trkpt.findIndex(({ "@_lat": lat, "@_lon": lon }) => {
+              return closestRoutePoint["@_lat"] === lat && closestRoutePoint["@_lon"] === lon;
+            });
 
-          if (index < 0) {
-            return [...acc, segment];
-          }
+            if (index < 0) {
+              return [...acc, segment];
+            }
 
-          return [...acc, segment.slice(0, index + 1), segment.slice(index + 1)];
-        }, []),
+            return [
+              ...acc,
+              { name: name, trkpt: segment.trkpt.slice(0, index + 1) },
+              { name: segment.name, trkpt: segment.trkpt.slice(index + 1) },
+            ];
+          },
+          [],
+        ),
       };
     },
     {
-      segments: [route.gpx.trk.trkseg.trkpt],
+      segments: [{ name: route.gpx.metadata.name, trkpt: route.gpx.trk.trkseg.trkpt }],
     },
   );
 
-  logger.debug("building new gpx");
-  const newRoute = builder.build({
-    ...route,
-    gpx: {
-      ...route.gpx,
-      trk: {
-        ...route.gpx.trk,
-        trkseg: segments.map((trkpt) => ({ trkpt })),
-      },
-    },
-  });
+  logger.debug("building new gpx files");
+  return await Promise.all(
+    segments.map(async (segment) => {
+      const { name, trkpt } = segment;
+      const newRoute = builder.build({
+        ...route,
+        gpx: {
+          ...route.gpx,
+          metadata: {
+            ...route.gpx.metadata,
+            name: `${route.gpx.metadata.name} (${name})`,
+          },
+          wpt: undefined,
+          trk: {
+            ...route.gpx.trk,
+            trkseg: {
+              trkpt,
+            },
+          },
+        },
+      });
 
-  logger.debug("writing file '%s'", OUTPUT_FILE_PATH);
-  return await fs.writeFile(OUTPUT_FILE_PATH, newRoute);
+      const outputFilePath = `${name}.gpx`;
+      logger.debug("writing file '%s'", outputFilePath);
+      return await fs.writeFile(outputFilePath, newRoute);
+    }),
+  );
 }
 
 main();

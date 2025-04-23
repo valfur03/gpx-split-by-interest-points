@@ -2,6 +2,9 @@ import { z } from "zod";
 
 export const routeSchema = z.object({
   gpx: z.object({
+    metadata: z.object({
+      name: z.string(),
+    }),
     wpt: z.array(
       z.object({
         name: z.string(),
